@@ -1,0 +1,66 @@
+#!/bin/bash
+
+function usage ()
+{
+    echo
+    echo "Usage: symsync [ -h | --help ] from_dir to_dir [ dir1 dir2 ... ]"
+    echo
+    echo "from_dir and to_dir must be valid paths to directories."
+    echo "Symbolic links pointing to files and directories in from_dir are"
+    echo "created in to_dir. Beware! Existing files and directories of matching"
+    echo "name, will be overwritten. To prevent overwriting chosen directories"
+    echo "list the directory names at the end (note, only name, not path)."
+    echo "For a chosen directory dirN, symsync from_dir/dirN to_dir/dirN [ dir1 ... ]"
+    echo "will be called."
+    echo
+    echo "Example: symsync ~/Dropbox/linuxfiles/dotfiles ~/ .config"
+    echo
+}
+
+invalid_opts="Error: Options are invalid."
+invalid_dirs="Error: Directories are invalid."
+
+# Test options' validity.
+while getopts ":h" opt; do
+    case $opt in
+        h)
+            usage
+            exit 0;;
+        *) 
+            echo $invalid_opts
+            usage
+            exit 1;;
+    esac
+done
+
+# Test directories' validity.
+[ -d "$1" ] && [ -d "$2" ] || { echo $invalid_dirs; usage; exit 1; }
+
+orig_fromdir="${1%%/}"
+orig_todir="${2%%/}"
+shift 2
+export exceptdirs="$@"
+
+function symsync ()
+{
+    local fromdir=$1 todir=$2
+
+    for file in `ls -A $fromdir`; do
+        if [ -f "$fromdir/$file" ]; then
+            ln -sf "$fromdir/$file" "$todir/$file" # Normal link for non-directory files.
+        else
+            for dir in $exceptdirs; do # Recursive call to excepted directories.
+                if [[ $file == $dir ]]; then
+                    [ -d "$todir/$file" ] || rm -f "$todir/$file"
+                    mkdir -p "$todir/$file"
+                    symsync "$fromdir/$file" "$todir/$file"
+                    continue 2
+                fi
+            done
+            rm -rf "$todir/$file"
+            ln -s "$fromdir/$file" "$todir/$file" # Normal link for non-excepted directories.
+        fi
+    done
+}
+
+symsync $orig_fromdir $orig_todir
